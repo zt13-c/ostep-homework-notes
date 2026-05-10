@@ -213,3 +213,103 @@ goodbye
 核心原理是利用了 I/O 操作的**阻塞特性 (Blocking)**：
 当父进程执行 `read()` 试图读取空管道时，操作系统内核会将其状态从“运行”切换为“阻塞休眠”，并剥夺其 CPU 使用权，强行转交给子进程运行。一旦子进程执行了 `write()`，内核会立刻产生中断，将父进程唤醒。这种方式比使用 `sleep()` 盲目等待要严谨、高效且可靠得多。
 ```
+## 题目 4：探索 exec() 家族的变体
+
+**题目要求：** 编写一个调用 `fork()` 的程序，然后调用某种形式的 `exec()` 来运行程序 `/bin/ls`。尝试 `exec()` 的所有变体。为什么同样的基本调用会有这么多变种？
+
+### 1. 实验代码 (`hw4.c`)
+
+```
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
+int main() {
+    int rc = fork();
+
+    if (rc < 0) {
+        perror("fork 失败");
+        exit(1);
+    } 
+    else if (rc == 0) {
+        // ================= 子进程分支 =================
+        printf("子进程 (PID: %d) 准备执行 ls 命令...\n", getpid());
+
+        // 准备供 v 系列使用的参数数组 (必须以 NULL 结尾)
+        char *myargs[] = {"ls", "-l", "-h", NULL};
+        // 准备供 e 系列使用的环境变量数组 (必须以 NULL 结尾)
+        char *myenv[]  = {"MY_CUSTOM_ENV=123", NULL};
+
+        // 【提示】下面列出了 6 种不同的 exec 变体。
+        // 每次测试时，请保留其中一行未注释，将其余行注释掉。
+
+        // 1. execl (l = list): 参数以列表形式逐个传入
+        execl("/bin/ls", "ls", "-l", "-h", NULL);
+
+        // 2. execle (l = list, e = env): 传列表，且自定义环境变量
+        // execle("/bin/ls", "ls", "-l", "-h", NULL, myenv);
+
+        // 3. execlp (l = list, p = path): 传列表，且自动在 PATH 环境变量中寻找程序
+        // execlp("ls", "ls", "-l", "-h", NULL); 
+
+        // 4. execv (v = vector): 参数以数组(向量)形式传入
+        // execv("/bin/ls", myargs);
+
+        // 5. execvp (v = vector, p = path): 传数组，且自动寻找路径
+        // execvp("ls", myargs);
+
+        // 6. execvpe (v = vector, p = path, e = env): 传数组，自动找路径，且自定义环境变量
+        // （注：部分系统上为 execvP，属于非标准扩展，execvpe 是 GNU 扩展）
+        // execvpe("ls", myargs, myenv);
+
+        // 如果 exec 执行成功，下面的代码将永远不会被执行到，因为脑子已经被替换了！
+        printf("如果你看到了这行字，说明 exec 失败了！\n");
+    } 
+    else {
+        // ================= 父进程分支 =================
+        wait(NULL); // 等待子进程完成“夺舍”和执行
+        printf("父进程 (PID: %d) 看到子进程执行完毕。\n", getpid());
+    }
+
+    return 0;
+}
+```
+### 2. 运行结果
+```
+子进程 (PID: 41875) 准备执行 ls 命令...
+total 104K
+-rwxrwxrwx 1 chenzhituan chenzhituan 7.5K May 10 22:09 Notes.md
+-rwxr-xr-x 1 chenzhituan chenzhituan  16K May 10 19:16 hw1
+-rw-r--r-- 1 chenzhituan chenzhituan 1.2K May 10 19:02 hw1.c
+-rw-r--r-- 1 chenzhituan chenzhituan  289 May 10 19:16 hw1_output.txt
+-rwxr-xr-x 1 chenzhituan chenzhituan  17K May 10 21:45 hw2
+-rw-r--r-- 1 chenzhituan chenzhituan 1.7K May 10 21:43 hw2.c
+-rw-r--r-- 1 chenzhituan chenzhituan   92 May 10 21:45 hw2_output
+-rw-r--r-- 1 chenzhituan chenzhituan  151 May 10 21:45 hw2_output.txt
+-rwxr-xr-x 1 chenzhituan chenzhituan  16K May 10 22:08 hw3
+-rw-r--r-- 1 chenzhituan chenzhituan  991 May 10 22:08 hw3.c
+-rwxr-xr-x 1 chenzhituan chenzhituan  16K May 10 22:34 hw4
+-rw-r--r-- 1 chenzhituan chenzhituan 2.1K May 10 22:34 hw4.c
+父进程 (PID: 41874) 看到子进程执行完毕。
+
+```
+
+### 3. 实验分析与思考
+
+```
+在 Linux 操作系统底层，真正的系统调用只有 execve() 这一个。
+我们在代码里调用的 execl, execvp 等等，其实都是 C 标准库（glibc）提供的封装函数（Wrapper Functions）。
+
+之所以搞出这么多变种，纯粹是为了给程序员提供极致的方便（语法糖）。我们可以通过后缀字母来破解它们的命名密码：
+
+l (list, 列表)： 适用于你在写代码时就已经确切知道有哪几个参数的情况。你可以直接把参数像变长参数一样一个个写进去（如 "ls", "-l", NULL）。
+
+v (vector, 数组)： 适用于参数是动态生成的。你可以先把参数组装成一个字符串数组（char *args[]），然后一次性传进去。
+
+p (path, 路径)： 这是一个超级福利。如果不带 p，你必须写死程序的绝对路径（比如 /bin/ls）。带了 p，你只需要写程序名（"ls"），C 库会自动去系统的 PATH 环境变量里帮你把真正的可执行文件找出来。
+
+e (environment, 环境变量)： 默认情况下，新程序会继承老程序的所有环境变量。如果你想给新程序一个纯净的、或者定制的运行环境，加上 e 就可以自己传入一个环境变量数组。
+
+总结： 各种组合的出现，是为了应对不同的编程场景。想要图省事就用带 p 的，参数已知就用 l，参数动态组装就用 v。万变不离其宗，它们最终在内核里都会殊途同归，变成对 execve() 的调用。
+```
