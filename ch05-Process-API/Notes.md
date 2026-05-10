@@ -6,22 +6,56 @@
 ### 1. 实验代码 (`hw1.c`)
 \```c
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
-int main() {
+int main(int argc, char *argv[]) {
+    // 1. 在调用 fork() 之前，定义变量 x 并赋值为 100
     int x = 100;
+    printf("【初始状态】 PID: %d, x = %d\n", getpid(), x);
+
+    // 2. 调用 fork()
     int rc = fork();
-    // ... 这里粘贴你的关键代码 ...
+
+    if (rc < 0) {
+        // fork 失败
+        fprintf(stderr, "fork failed\n");
+        exit(1);
+    } 
+    else if (rc == 0) {
+        // ================= 子进程分支 =================
+        printf("【子进程启动】 PID: %d, 刚进来的 x = %d\n", getpid(), x);
+        
+        // 子进程改变 x 的值
+        x = 200;
+        printf("【子进程修改】 PID: %d, 修改后的 x = %d\n", getpid(), x);
+        
+    } 
+    else {
+        // ================= 父进程分支 =================
+        // 为了让输出好看点，我们让父进程稍微等一下，让子进程先跑完
+        wait(NULL); 
+        
+        printf("【父进程恢复】 PID: %d, 此时的 x = %d\n", getpid(), x);
+        
+        // 父进程改变 x 的值
+        x = 300;
+        printf("【父进程修改】 PID: %d, 修改后的 x = %d\n", getpid(), x);
+    }
+
     return 0;
 }
 \```
 
 ### 2. 运行结果
 \```text
-【初始状态】 PID: 29266, x = 100
-【子进程修改】 PID: 29267, 修改后的 x = 200
-【父进程恢复】 PID: 29266, 此时的 x = 100
-【父进程修改】 PID: 29266, 修改后的 x = 300
+【初始状态】 PID: 7594, x = 100
+【子进程启动】 PID: 7595, 刚进来的 x = 100
+【子进程修改】 PID: 7595, 修改后的 x = 200
+【初始状态】 PID: 7594, x = 100
+【父进程恢复】 PID: 7594, 此时的 x = 100
+【父进程修改】 PID: 7594, 修改后的 x = 300
 \```
 
 ### 3. 实验分析与思考
