@@ -29,13 +29,13 @@ int main() {
         // execle("/bin/ls", "ls", "-l", "-h", NULL, myenv);
 
         // 3. execlp (l = list, p = path): 传列表，且自动在 PATH 环境变量中寻找程序
-        execlp("ls", "ls", "-l", "-h", NULL); 
+        // execlp("ls", "ls", "-l", "-h", NULL); 
 
         // 4. execv (v = vector): 参数以数组(向量)形式传入
         // execv("/bin/ls", myargs);
 
         // 5. execvp (v = vector, p = path): 传数组，且自动寻找路径
-        // execvp("ls", myargs);
+        execvp("ls", myargs);
 
         // 6. execvpe (v = vector, p = path, e = env): 传数组，自动找路径，且自定义环境变量
         // （注：部分系统上为 execvP，属于非标准扩展，execvpe 是 GNU 扩展）
